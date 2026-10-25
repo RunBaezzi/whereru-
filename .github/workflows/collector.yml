@@ -1,0 +1,123 @@
+# CREW LIVE 기록 수집기
+# - 매일 아침 자동으로 켜져서, 오늘 대회가 있으면 수집 시작 시각까지 기다렸다가 1분마다 기록을 읽습니다.
+#   (오늘 대회가 없으면 바로 종료)
+# - 관리자 화면의 [지금 기록 가져오기] 버튼으로도 켤 수 있습니다. 켜지면 즉시 1회 수집합니다.
+# - 결과는 'data' 브랜치의 live/<대회ID>.json 에 저장되고, 화면이 그 파일을 직접 읽습니다.
+# - GitHub 실행 시간 한도(6시간)에 걸리면 스스로 이어서 실행합니다.
+name: CREW LIVE Collector
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 방식'
+        type: choice
+        options: ['실전', '1회 테스트']
+        default: '실전'
+      race:
+        description: '1회 테스트할 대회 ID (비우면 오늘/다가오는 대회)'
+        default: ''
+      interval:
+        description: '갱신 간격(초)'
+        default: '60'
+  schedule:
+    # 매일 05:40 KST (= 20:40 UTC) 자동 시작 — 오늘 대회가 없으면 바로 끝남
+    - cron: '40 20 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: crewlive-collector
+  cancel-in-progress: true
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install requests
+
+      - name: Prepare data branch
+        run: |
+          git config --global user.name "crewlive-bot"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
+            git worktree add -B data _data origin/data
+          else
+            git worktree add --detach _data
+            cd _data
+            git checkout --orphan data
+            git rm -rf . -q || true
+            cd ..
+          fi
+          mkdir -p _data/live _data/debug
+
+      - name: Collect loop
+        env:
+          OUT_DIR: _data/live
+          DEBUG_DIR: _data/debug
+          CONFIG_PATH: _cfg.json
+          MODE_IN: ${{ github.event.inputs.mode || '실전' }}
+          RACE_IN: ${{ github.event.inputs.race || '' }}
+          INTERVAL: ${{ github.event.inputs.interval || '60' }}
+        run: |
+          JOB_END=$(( $(date +%s) + 340*60 ))
+          get_cfg () {
+            # 관리자가 저장한 최신 설정을 매번 다시 읽음 (대회·명단 변경 즉시 반영)
+            if git fetch -q --depth=1 origin main 2>/dev/null && git show origin/main:config.json > _cfg.json 2>/dev/null; then :;
+            elif [ -f config.json ]; then cp config.json _cfg.json; else echo '{}' > _cfg.json; fi
+          }
+          push_data () {
+            cd _data
+            git add -A
+            if git rev-parse --verify HEAD >/dev/null 2>&1; then
+              git commit --amend -q -m "live $(TZ=Asia/Seoul date +%H:%M:%S)" || true
+            else
+              git commit -q -m "live $(TZ=Asia/Seoul date +%H:%M:%S)" || true
+            fi
+            for i in 1 2 3; do git push -f -q origin data && break; sleep 3; done
+            cd ..
+          }
+          get_cfg
+          if [ "$MODE_IN" = "1회 테스트" ]; then
+            RC=0; MODE=once RACE="$RACE_IN" python tracker.py || RC=$?
+            push_data
+            echo "1회 테스트 완료 (rc=$RC)"; exit 0
+          fi
+          read START END <<< "$(python tracker.py --plan 2>/dev/null || echo 0 0)"; START=${START:-0}; END=${END:-0}
+          if [ "$END" = "0" ]; then echo "오늘 등록된 대회가 없어 종료합니다."; exit 0; fi
+          if [ "$(date +%s)" -ge "$END" ]; then echo "오늘 대회 수집 시간이 이미 끝났습니다."; exit 0; fi
+          # 켜지자마자 1회 수집 (버튼으로 켠 경우 바로 확인 가능)
+          RC=0; MODE=auto FORCE=1 python tracker.py || RC=$?
+          push_data
+          while true; do
+            NOW=$(date +%s)
+            if [ "$NOW" -ge "$END" ]; then echo "수집 종료 시각 도달"; break; fi
+            if [ "$NOW" -ge "$JOB_END" ]; then echo "실행 한도 도달 - 이어달리기"; echo "CHAIN=1" >> "$GITHUB_ENV"; break; fi
+            sleep "$INTERVAL"
+            get_cfg
+            read START END <<< "$(python tracker.py --plan 2>/dev/null || echo 0 0)"; START=${START:-0}; END=${END:-0}
+            if [ "$END" = "0" ]; then echo "대회가 삭제되어 종료합니다."; break; fi
+            if [ "$(date +%s)" -lt "$START" ]; then continue; fi
+            RC=0; MODE=auto python tracker.py || RC=$?
+            push_data
+            if [ "$RC" = "3" ]; then echo "마이리저트 접속 제한 감지 - 3분 쉽니다"; sleep 180; fi
+          done
+
+      - name: Continue in a new run (이어달리기)
+        if: env.CHAIN == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run collector.yml --ref "${{ github.ref_name }}" \
+            -f mode=실전 -f interval="${{ github.event.inputs.interval || '60' }}"
