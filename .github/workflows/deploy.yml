@@ -1,0 +1,53 @@
+# CREW LIVE 웹사이트 배포
+# - 화면 파일(index.html, admin.html)이 바뀔 때만 GitHub Pages 에 올립니다.
+# - 대회·명단 설정(config.json)과 실시간 기록은 화면이 GitHub 저장소에서 직접 읽으므로
+#   관리자가 설정을 저장해도 사이트를 다시 배포하지 않습니다. (배포 횟수 제한 회피)
+name: CREW LIVE Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'admin.html'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: crewlive-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build site folder
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          if [ -f admin.html ]; then cp admin.html _site/; fi
+          # 예비용 설정 사본 (저장소에서 직접 읽기가 실패할 때만 사용)
+          if [ -f config.json ] && python3 -c "import json; json.load(open('config.json'))"; then cp config.json _site/; fi
+          touch _site/.nojekyll
+          ls -la _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+          retention-days: 1
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
