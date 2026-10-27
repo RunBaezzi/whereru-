@@ -2989,7 +2989,7 @@
      "id": "full",
      "name": "풀코스",
      "km": 42.195,
-     "turnKm": 10.9,
+     "turnKm": null,
      "start": "07:30",
      "groups": [],
      "path": [
