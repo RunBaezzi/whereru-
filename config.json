@@ -7,7 +7,8 @@
   "board": {
    "url": "https://hubwlfkuodzxrbflhpod.supabase.co",
    "key": "sb_publishable_Kk0-81-QP5jJ8xg2Gkvgrg_4KcG1WPM"
-  }
+  },
+  "selfReg": true
  },
  "races": [
   {
