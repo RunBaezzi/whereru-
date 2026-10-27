@@ -13,7 +13,7 @@ CREW LIVE 기록 수집기 (여러 대회 · 여러 코스 · 여러 크루)
   MODE         auto = 오늘 대회 중 수집 시간대인 것만 / once = 오늘(없으면 다가오는) 대회 1회 수집
   FORCE        1 이면 auto 모드에서도 시간대와 상관없이 오늘 대회를 수집
   RACE         특정 대회 ID 만 수집 (1회 테스트용)
-  WORKERS      동시 접속 수 (기본 12)
+  WORKERS      동시 접속 수 (기본 4 · 마이리저트에 한꺼번에 몰리지 않게 낮게)
 명령
   python tracker.py          수집 실행 (종료코드 3 = 마이리저트 접속 제한 감지)
   python tracker.py --plan   오늘 수집 시작/종료 시각 출력 "START END" (없으면 "0 0")
@@ -21,6 +21,7 @@ CREW LIVE 기록 수집기 (여러 대회 · 여러 코스 · 여러 크루)
 import html as htmlmod
 import json
 import os
+import random
 import re
 import sys
 import threading
@@ -37,7 +38,8 @@ DEBUG_DIR = os.environ.get("DEBUG_DIR", "")
 MODE = os.environ.get("MODE", "auto").strip() or "auto"
 FORCE = os.environ.get("FORCE", "") == "1"
 ONLY_RACE = os.environ.get("RACE", "").strip()
-WORKERS = max(1, min(24, int(os.environ.get("WORKERS", "12") or 12)))
+WORKERS = max(1, min(24, int(os.environ.get("WORKERS", "4") or 4)))
+FINISHED_RECHECK_SEC = 15 * 60   # 완주한 사람은 기록이 더 안 바뀌니 15분에 한 번만 다시 확인
 
 HALF_KM = 21.0975
 PAGE_URL = "https://myresult.co.kr/{event_id}/{bib}"
@@ -318,6 +320,7 @@ def fetch_runner(event_id, bib, course_km, turn_km):
     """ok=False 면 '이번엔 못 읽었음'(이전 값 유지). limited=True 면 접속 제한(429/403) 의심."""
     last_err, limited = "", False
     url = PAGE_URL.format(event_id=event_id, bib=bib)
+    time.sleep(random.uniform(0.1, 0.4))   # 요청 사이에 살짝 간격 (사람이 조회하는 속도에 가깝게)
     for _ in range(2):
         try:
             res = session().get(url, timeout=8)
@@ -355,29 +358,68 @@ def fetch_runner(event_id, bib, course_km, turn_km):
 
 
 # ───────────────────────── 대회 1개 수집 ─────────────────────────
-def race_bibs(race):
+def self_bibs(cfg, rid):
+    """크루원이 앱에서 직접 등록한 배번 (Supabase odj_bibs). 못 읽으면 직전에 받아둔 목록을 씀."""
+    st = (cfg or {}).get("settings") or {}
+    if not st.get("selfReg"):
+        return []
+    b = st.get("board") or {}
+    m = re.match(r"^(https://[\w.-]+)", str(b.get("url") or "").strip())
+    key = str(b.get("key") or "").strip()
+    cache = os.path.join(OUT_DIR, f"{rid}.self.json")
+    if m and key:
+        h = {"apikey": key}
+        if key.startswith("eyJ"):
+            h["Authorization"] = f"Bearer {key}"
+        try:
+            res = requests.get(f"{m.group(1)}/rest/v1/odj_bibs",
+                               params={"select": "crew_id,bib,course_id", "race_id": f"eq.{rid}", "limit": "5000"},
+                               headers=h, timeout=8)
+            if res.status_code == 200 and isinstance(res.json(), list):
+                rows = [x for x in res.json() if isinstance(x, dict) and x.get("bib")]
+                os.makedirs(OUT_DIR, exist_ok=True)
+                with open(cache, "w", encoding="utf-8") as f:
+                    json.dump(rows, f, ensure_ascii=False, separators=(",", ":"))
+                if rows:
+                    print(f"[{rid}] 크루원이 직접 등록한 배번 {len(rows)}개")
+                return rows
+            print(f"[WARN] {rid} 직접 등록 배번 읽기 실패 HTTP {res.status_code} (직전 목록 사용)")
+        except Exception as e:
+            print(f"[WARN] {rid} 직접 등록 배번 읽기 실패: {str(e)[:80]} (직전 목록 사용)")
+    try:
+        with open(cache, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+        return rows if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+
+def race_bibs(race, extra=None):
     """배번 → (코스 km, 반환점 km). 같은 배번이 여러 크루에 있어도 한 번만 수집."""
     courses = {c.get("id"): c for c in race.get("courses", []) or [] if isinstance(c, dict)}
     first = next(iter(courses.values()), None)
     out = {}
-    for crew in race.get("crews", []) or []:
-        for rn in crew.get("runners", []) or []:
-            bib = str(rn.get("b", "")).strip()
-            if not bib or bib in out:
-                continue
-            c = courses.get(rn.get("c")) or first
-            if not c:
-                continue
-            try:
-                km = float(c.get("km") or 42.195)
-            except (TypeError, ValueError):
-                km = 42.195
-            turn = c.get("turnKm")
-            try:
-                turn = float(turn) if turn not in (None, "") else None
-            except (TypeError, ValueError):
-                turn = None
-            out[bib] = (km, turn)
+    seen = set()
+    entries = [(str(rn.get("b", "")).strip(), rn.get("c"))
+               for crew in race.get("crews", []) or [] for rn in (crew.get("runners", []) or []) if isinstance(rn, dict)]
+    entries += [(str(x.get("bib", "")).strip(), x.get("course_id")) for x in (extra or []) if isinstance(x, dict)]
+    for bib, cid in entries:
+        if not bib or bib.upper() in seen:
+            continue
+        seen.add(bib.upper())
+        c = courses.get(cid) or first
+        if not c:
+            continue
+        try:
+            km = float(c.get("km") or 42.195)
+        except (TypeError, ValueError):
+            km = 42.195
+        turn = c.get("turnKm")
+        try:
+            turn = float(turn) if turn not in (None, "") else None
+        except (TypeError, ValueError):
+            turn = None
+        out[bib] = (km, turn)
     return out
 
 
@@ -390,19 +432,35 @@ def load_prev(path):
         return {}
 
 
-def collect_race(race, now):
+def collect_race(race, now, cfg=None):
     rid = race["id"]
     event_id = str(race["myresultId"]).strip()
-    bibs = race_bibs(race)
+    bibs = race_bibs(race, self_bibs(cfg, rid))
     path = os.path.join(OUT_DIR, f"{rid}.json")
     prev = load_prev(path)
     prev_r = prev.get("r") if isinstance(prev.get("r"), dict) else {}
     overrides = race.get("overrides") if isinstance(race.get("overrides"), dict) else {}
 
-    results = {}
-    if bibs:
+    # 완주해서 최근 15분 안에 확인한 사람은 이번엔 건너뜀 (이전 기록 그대로 유지)
+    def resting(b, km):
+        o = prev_r.get(b)
+        if not isinstance(o, dict) or o.get("ov"):
+            return False
+        try:
+            done = float(o.get("km") or 0) >= km - 0.01 and bool(o.get("nt"))
+        except (TypeError, ValueError):
+            return False
+        return done and now - float(o.get("ck") or 0) < FINISHED_RECHECK_SEC
+    skip = {b for b, (km, _t) in bibs.items() if resting(b, km)}
+    todo = [b for b in bibs if b not in skip]
+    random.shuffle(todo)
+    if skip:
+        print(f"[{rid}] 완주자 {len(skip)}명은 이번 회차 건너뜀 · 조회 {len(todo)}명")
+
+    results = {b: {"ok": True, "skipped": True} for b in skip}
+    if todo:
         with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            futs = {b: ex.submit(fetch_runner, event_id, b, km, turn) for b, (km, turn) in bibs.items()}
+            futs = {b: ex.submit(fetch_runner, event_id, b, *bibs[b]) for b in todo}
             for b, f in futs.items():
                 try:
                     results[b] = f.result()
@@ -424,11 +482,15 @@ def collect_race(race, now):
             "pt": old.get("pt"), "ps": old.get("ps"), "nt": old.get("nt"), "s0": old.get("s0"),
             "sp": old.get("sp") if isinstance(old.get("sp"), list) else [],
             "e": int(old.get("e") or now),
-            "nm": old.get("nm"),
+            "nm": old.get("nm"), "ck": old.get("ck"),
         }
         res = results.get(bib, {})
-        if res.get("ok"):
+        if res.get("ok") and res.get("skipped"):
             ok_count += 1
+        elif res.get("ok"):
+            ok_count += 1
+            if rec["km"] >= course_km - 0.01 or (res.get("best") or {}).get("km", 0) >= course_km - 0.01:
+                rec["ck"] = int(now)
             if res.get("name"):
                 rec["nm"] = res["name"]
             if sample is None:
@@ -503,7 +565,7 @@ def main():
     limited_total, bib_total = 0, 0
     for r in races:
         try:
-            lim, n = collect_race(r, now)
+            lim, n = collect_race(r, now, cfg)
             limited_total += lim
             bib_total += n
         except Exception as e:  # 한 대회 오류가 다른 대회를 막지 않게

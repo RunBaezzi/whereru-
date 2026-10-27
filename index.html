@@ -1301,6 +1301,37 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .sp-for img{height:clamp(28px,8.4vw,44px);width:auto;display:block}
   @keyframes forIn{0%{opacity:0;transform:translateY(12px) scale(.94)}100%{opacity:1;transform:none}}
 
+  /* ───── 배번 직접 등록 ───── */
+  .reg-btn{flex:0 0 auto;height:38px;padding:0 14px;border-radius:999px;background:var(--brand);color:#fff;font-size:13.5px;font-weight:800;white-space:nowrap}
+  .reg-btn[hidden]{display:none}
+  .reg-cta{display:inline-block;margin-top:12px;height:44px;padding:0 20px;border-radius:999px;background:var(--brand);color:#fff;font-size:15px;font-weight:800}
+  .reg-card{max-height:92vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .reg-card p{line-height:1.55}
+  .reg-card p b{color:var(--ink);font-weight:700}
+  .reg-card input,.reg-card select{width:100%;height:48px;border-radius:14px;border:1.5px solid var(--line);padding:0 14px;font-size:16px;font-family:var(--sans);letter-spacing:0;outline:none;background:#fff;color:var(--ink);-webkit-appearance:none;appearance:none;min-width:0}
+  .reg-card select{background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);background-position:calc(100% - 18px) 21px,calc(100% - 13px) 21px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+  .reg-card input:focus,.reg-card select:focus{border-color:var(--brand)}
+  .reg-card select[hidden]{display:none}
+  .reg-pw{margin-bottom:8px}
+  .reg-pw[hidden]{display:none}
+  .reg-form{display:grid;grid-template-columns:1fr 1.3fr;gap:8px}
+  .reg-form #regBib{font-weight:800;letter-spacing:.04em}
+  .reg-add{width:100%;height:50px;border-radius:999px;font-size:15px;font-weight:800;margin-top:2px}
+  .reg-add:disabled{opacity:.45}
+  .reg-list{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+  .reg-lh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px;font-size:13px}
+  .reg-lh b{font-weight:800} .reg-lh span{font-size:11px;color:var(--ink3);font-weight:300;text-align:right}
+  .reg-empty{font-size:12.5px;color:var(--ink3);font-weight:300;padding:8px 0 4px}
+  .reg-item{display:flex;align-items:center;gap:6px;padding:9px 0;border-bottom:1px solid var(--soft)}
+  .ri-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .ri-main b{font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ri-main span{font-size:12px;color:var(--ink2);font-weight:300}
+  .reg-item button{flex:0 0 auto;height:32px;padding:0 12px;border-radius:999px;background:var(--soft);font-size:12.5px;font-weight:700;color:var(--ink)}
+  .reg-item button.del{color:var(--warn)}
+  .reg-item em{font-style:normal;font-size:11.5px;color:var(--ink3);font-weight:700}
+  .reg-done{width:100%;height:48px;border-radius:999px;font-size:15px;margin-top:14px}
+  @media (max-width:360px){ .reg-form{grid-template-columns:1fr} }
+
 </style>
 </head>
 <body>
@@ -1342,6 +1373,24 @@ svg.leaflet-image-layer.leaflet-interactive path {
       <button class="pw-cancel" id="pwCancel">취소</button>
       <button class="pw-ok" id="pwOk">입장하기</button>
     </div>
+  </div>
+</div>
+
+<div class="pw reg" id="reg" hidden>
+  <div class="pw-card reg-card" id="regCard">
+    <div class="pw-crew"><span id="regLogo"></span><span id="regCrew">크루</span></div>
+    <p id="regHint">배번을 등록하면 실시간 트래커에 바로 나와요</p>
+    <div class="reg-pw" id="regPwRow" hidden><input type="password" id="regPw" placeholder="크루 비밀번호" autocomplete="off" /></div>
+    <div class="reg-form">
+      <input id="regBib" inputmode="numeric" placeholder="배번" maxlength="12" autocomplete="off" enterkeyhint="next" />
+      <input id="regName" placeholder="이름 (선택)" maxlength="20" autocomplete="off" enterkeyhint="done" />
+      <select id="regCourse" aria-label="종목"></select>
+      <select id="regGroup" aria-label="그룹"></select>
+    </div>
+    <div class="pw-err" id="regErr"></div>
+    <button class="pw-ok reg-add" id="regAdd">등록하기</button>
+    <div class="reg-list" id="regList"></div>
+    <button class="pw-cancel reg-done" id="regDone">완료</button>
   </div>
 </div>
 
@@ -1425,6 +1474,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
         <input type="search" id="search" placeholder="이름 또는 배번 검색" autocomplete="off" enterkeyhint="search" />
       </label>
+      <button class="reg-btn" id="regBtn" hidden>＋ 배번</button>
     </div>
     <div class="sync"><span>기록 기준 <b id="syncFoot">--:--:--</b></span><span id="syncDesc">-</span></div>
   </div>
@@ -1586,7 +1636,7 @@ function normalizeCfg(c){
     if(!r || !r.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.date || '')) || r.hidden) return;
     const courses = (r.courses || []).filter(x => x && x.id).map(x => Object.assign({ name:'코스', km:42.195, start:'09:00', groups:[], path:[] }, x, { km: +x.km || 42.195 }));
     if(!courses.length) return;
-    const crews = (r.crews || []).filter(x => x && x.id).map(x => Object.assign({ name:'크루', color:'#F2540A', runners:[] }, x, {
+    const crews = (r.crews || []).filter(x => x && x.id).map(x => Object.assign({ name:'크루', color:'#F2540A', runners:[] }, x, { rid: r.id,
       runners: (x.runners || []).filter(p => p && String(p.b || '').trim()).map(p => ({ n: String(p.n || '').trim(), b: String(p.b).trim(), c: courses.some(k => k.id === p.c) ? p.c : courses[0].id, g: String(p.g || '').trim() }))
     }));
     out.races.push(Object.assign({}, r, { courses, crews }));
@@ -1636,7 +1686,30 @@ function liveRec(d, bib){
 function findRace(rid){ return cfg && cfg.races.find(r => r.id === rid); }
 function findCourse(race, cid){ return race && race.courses.find(c => c.id === cid); }
 function findCrew(race, crewId){ return race && race.crews.find(c => c.id === crewId); }
-function crewMembers(crew, course){ return crew.runners.filter(p => p.c === course.id); }
+function crewMembers(crew, course){
+  const base = crew.runners.filter(p => p.c === course.id);
+  if(!SELF.rows.length) return base;
+  const seen = new Set(crew.runners.map(p => String(p.b).toUpperCase()));
+  const extra = SELF.rows.filter(x => x.race_id === crew.rid && x.crew_id === crew.id && x.course_id === course.id && !seen.has(String(x.bib).toUpperCase()))
+    .map(x => ({ n: String(x.name || '').trim(), b: String(x.bib), c: x.course_id, g: String(x.grp || ''), self: 1 }));
+  return base.concat(extra);
+}
+/* ───────── 크루원이 직접 등록한 배번 (게시판 있는 버전 + 관리자 설정에서 켰을 때) ─────────
+   Supabase odj_bibs 표에 저장 · 쓰기는 크루 비밀번호를 서버에서 확인하는 함수로만 · 종목 출발 시각이 되면 서버가 막음 */
+const SELF = { rows: [], at: 0 };
+function selfRegOn(){ return FEATURE_BOARD && !DEMO && !!(cfg && cfg.settings && cfg.settings.selfReg) && Board.ready(); }
+async function loadSelf(force = false){
+  if(!selfRegOn()){ SELF.rows = []; return SELF.rows; }
+  if(!force && Date.now() - SELF.at < 30000) return SELF.rows;
+  try{
+    const rows = await Board.req('/rest/v1/odj_bibs?select=race_id,crew_id,bib,name,course_id,grp&order=id&limit=5000');
+    SELF.rows = Array.isArray(rows) ? rows : []; SELF.at = Date.now();
+  }catch(_){ SELF.at = Date.now() - 20000; }
+  return SELF.rows;
+}
+function regLockMs(race, course){ return kstMs(race.date, hmOf(course.start) || [9, 0]); }
+function regOpen(race, course){ return selfRegOn() && nowMs() < regLockMs(race, course); }
+function regOpenAny(race){ return race.courses.some(c => regOpen(race, c)); }
 
 /* ───────── 비밀번호 (SHA-256) ───────── */
 async function sha256Hex(text){
@@ -1677,8 +1750,12 @@ async function tryUnlock(race, crew, pw){
   const h = await sha256Hex(`${crew.salt || ''}:${pw}`);
   if(h !== crew.pw) return false;
   const u = store.get('cl_unlock', {}); u[unlockKey(race, crew)] = crew.pw; store.set('cl_unlock', u);
+  rememberPw(race, crew, pw);
   return true;
 }
+/* 배번 직접 등록 때 서버가 비밀번호를 다시 확인해요 → 이 탭에서만 기억 (창을 닫으면 사라짐) */
+function rememberPw(race, crew, pw){ try{ const m = JSON.parse(sessionStorage.getItem('cl_pwp') || '{}'); m[unlockKey(race, crew)] = pw; sessionStorage.setItem('cl_pwp', JSON.stringify(m)); }catch(_){} }
+function recallPw(race, crew){ try{ return JSON.parse(sessionStorage.getItem('cl_pwp') || '{}')[unlockKey(race, crew)] || ''; }catch(_){ return ''; } }
 /* 이름: 관리자가 넣은 이름 → 없으면 마이리저트에서 읽은 이름 → 그것도 없으면 배번 */
 function personName(p, x, real){
   const n = (p.n || (x && x.nm) || '').trim();
@@ -2374,7 +2451,10 @@ function renderList(){
     return true;
   };
   const rows = runners.filter(match);
-  if(!rows.length){ list.innerHTML = `<div class="empty">해당하는 크루원이 없어요</div>` + credit(); return; }
+  if(!rows.length){
+    const cta = !runners.length && CTX && regOpen(CTX.race, CTX.course);
+    list.innerHTML = (cta ? `<div class="empty">아직 등록된 크루원이 없어요<br><button class="reg-cta" data-reg="1">＋ 배번 등록하기</button></div>` : `<div class="empty">해당하는 크루원이 없어요</div>`) + credit(); return;
+  }
   const rk = r => on ? ranks.get(String(r.bib)) : null;
   const isTop = r => on && status(r) !== 'standby' && ranks.get(String(r.bib)) <= 3;
   let html = '';
@@ -2412,6 +2492,7 @@ function renderStats(){
   $('cAll').textContent = runners.length; $('cRun').textContent = run;
   $('cFin').textContent = fin; $('cWait').textContent = wait; $('cDnf').textContent = dnf;
   $('stats').classList.toggle('has-dnf', dnf > 0);
+  $('regBtn').hidden = !(CTX && regOpen(CTX.race, CTX.course));
   if(!dnf && filter === 'dnf') setFilter('all');
 }
 function renderFocus(){
@@ -2556,6 +2637,7 @@ function enterTracker(race, course, crew, bib){
   render();
   requestAnimationFrame(() => { setSnap('half'); fitCourse(false); });
   refresh(true).then(() => { if(bib && runners.some(r => r.bib === bib)) setTimeout(() => selectRunner(bib), 400); });
+  if(!ROSTER.length && regOpen(race, course)) setTimeout(() => openReg(), 350);
 }
 function leaveTracker(){
   if(!CTX) return;
@@ -2577,6 +2659,12 @@ async function refresh(manual = false, byUser = false){
   const btn = $('refreshBtn'); btn.classList.add('spinning');
   const ctx = CTX;
   try{
+    if(selfRegOn()){
+      await loadSelf(manual);
+      if(ctx !== CTX) return;
+      const nr = buildRoster(ctx.crew, ctx.course);
+      if(JSON.stringify(nr.map(r => [r.name, r.bib, r.group])) !== JSON.stringify(ROSTER.map(r => [r.name, r.bib, r.group]))) ROSTER = nr;
+    }
     const d = await loadLive(ctx.race.id, manual);
     if(ctx !== CTX) return;
     if(d){
@@ -2645,7 +2733,7 @@ function renderRaces(){
   V(`<div class="h-title">어떤 대회를 볼까요?</div><div class="h-sub">대회를 고르면 종목과 크루를 선택할 수 있어요</div>` +
     sorted.map(r => {
       const dl = dateLabel(r.date);
-      const runnersN = r.crews.reduce((s, c) => s + c.runners.length, 0);
+      const runnersN = r.crews.reduce((s, c) => s + r.courses.reduce((t, k) => t + crewMembers(c, k).length, 0), 0);
       return `<button class="card${raceState(r) === 'live' ? ' is-live' : ''}" data-go="#/race/${encodeURIComponent(r.id)}"><div class="rc">
         <div class="rc-date"><b>${dl.md}</b><span>${dl.wd}요일</span></div>
         <div class="rc-main">${stateBadge(r)}<div class="rc-name">${esc(r.name)}</div>
@@ -2672,14 +2760,15 @@ async function renderCrews(rid, cid){
   setTab('races');
   const race = findRace(rid), course = findCourse(race, cid);
   if(!race || !course){ V(`${BACK('#/')}<div class="h-empty">종목을 찾을 수 없어요</div>`); return; }
-  const crews = race.crews.filter(c => crewMembers(c, course).length).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const open = regOpen(race, course);
+  const crews = race.crews.filter(c => crewMembers(c, course).length || open).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   const draw = live => {
     const st = raceState(race);
     V(`${BACK(race.courses.length > 1 ? `#/race/${encodeURIComponent(rid)}` : '#/')}<div class="h-title">${esc(race.name)}</div>
       <div class="h-sub">${esc(course.name)} ${kmLabel(course.km)}km · 우리 크루를 선택하세요 ${stateBadge(race)}</div>` +
       (crews.length ? crews.map(c => {
         const mem = crewMembers(c, course);
-        let sub = `크루원 ${mem.length}명`;
+        let sub = mem.length ? `크루원 ${mem.length}명` : '아직 등록 전 · 들어가서 배번을 등록하세요';
         if(live && st !== 'upcoming'){
           let fin = 0, run = 0;
           mem.forEach(p => { const x = live.r[p.b]; if(!x) return; if(+x.km >= +course.km - 0.01) fin++; else if(x.st || +x.km > 0) run++; });
@@ -2690,7 +2779,7 @@ async function renderCrews(rid, cid){
           <span class="crew-main"><b>${esc(c.name)}</b><span>${sub}</span></span>
           <span class="crew-lock${open ? ' open' : ''}">${open ? UNLOCK : LOCK}</span></button>`;
       }).join('') : `<div class="h-empty">이 종목에 등록된 크루가 없어요</div>`) +
-      `<div class="note">🔒 크루마다 비밀번호가 있어요. 비밀번호는 크루장에게 받아주세요.</div>`);
+      `<div class="note">🔒 크루마다 비밀번호가 있어요. 비밀번호는 크루장에게 받아주세요.${open ? `<br>✍️ 크루 비밀번호로 들어가면 <b>${hmStr(hmOf(course.start) || [9,0])} 출발 전까지</b> 배번을 직접 등록·수정할 수 있어요.` : ''}</div>`);
     $('homeView').querySelectorAll('[data-crew]').forEach(b => b.addEventListener('click', () => {
       location.hash = `#/race/${encodeURIComponent(rid)}/${encodeURIComponent(cid)}/${encodeURIComponent(b.dataset.crew)}`;
     }));
@@ -2790,6 +2879,7 @@ async function renderHof(rid, cid, crewId){
   if(!race){ race = defaultHofRace(); history.replaceState(null, '', `#/hof/${encodeURIComponent(race.id)}/${encodeURIComponent(race.courses[0].id)}`); }
   let course = findCourse(race, cid) || race.courses.find(c => race.crews.some(cr => crewMembers(cr, c).length)) || race.courses[0];
   const live = raceState(race) === 'upcoming' ? null : await loadLive(race.id).catch(() => null);
+  await loadSelf();
   if(!location.hash.startsWith('#/hof')) return;
   const S = standings(race, course, live);
   if(crewId){ renderHofCrew(race, course, S, crewId, live); return; }
@@ -2855,8 +2945,9 @@ function renderHofCrew(race, course, S, crewId, live){
 const FEATURE_BOARD = true;
 const Board = (() => {
   const B = () => (cfg && cfg.settings && cfg.settings.board) || {};
-  const ready = () => FEATURE_BOARD && /^https:\/\/[\w.-]+\/?$/.test(String(B().url || '').trim()) && !!String(B().key || '').trim();
-  const base = () => String(B().url).trim().replace(/\/+$/, '');
+  /* 'https://xxx.supabase.co/rest/v1/' 처럼 뒤에 경로가 붙어 있어도 앞부분 주소만 씀 */
+  const base = () => { try{ const u = new URL(String(B().url || '').trim()); return u.protocol === 'https:' ? u.origin : ''; }catch(_){ return ''; } };
+  const ready = () => FEATURE_BOARD && !!base() && !!String(B().key || '').trim();
   function headers(json){
     const k = String(B().key).trim(), h = { apikey: k };
     if(k.startsWith('eyJ')) h.Authorization = `Bearer ${k}`;
@@ -2930,7 +3021,7 @@ const Board = (() => {
       like: async id => { const p = mem.find(x => x.id === +id); if(p) p.likes++; return p ? p.likes : null; },
       remove: async id => { const i = mem.findIndex(x => x.id === +id); if(i >= 0) mem.splice(i, 1); return i >= 0; } };
   }
-  return { ready, list, counts, post, like, remove, shrink, photoUrl };
+  return { ready, list, counts, post, like, remove, shrink, photoUrl, req };
 })();
 $('tabBoard').hidden = !FEATURE_BOARD;
 
@@ -3063,9 +3154,11 @@ let routing = false;
 async function route(){
   if(!cfg) await loadConfig();
   const p = parts();
+  if(p[0] === 'race' || p[0] === 'hof' || !p[0]) await loadSelf();
   if(p[0] === 'race' && p[3]){
     const race = findRace(p[1]), course = findCourse(race, p[2]), crew = findCrew(race, p[3]);
-    if(!race || !course || !crew || !crewMembers(crew, course).length){ toast('크루를 찾을 수 없어요'); location.hash = race ? `#/race/${encodeURIComponent(race.id)}` : '#/'; return; }
+    if(race) await loadSelf();
+    if(!race || !course || !crew || (!crewMembers(crew, course).length && !regOpen(race, course))){ toast('크루를 찾을 수 없어요'); location.hash = race ? `#/race/${encodeURIComponent(race.id)}` : '#/'; return; }
     if(isUnlocked(race, crew)){ closePw(); enterTracker(race, course, crew, p[4]); return; }
     leaveTracker(); showHome(true);
     await renderCrews(race.id, course.id);
@@ -3300,6 +3393,151 @@ function demoLive(rid){
   }));
   return { updated_at: fmtHMS(now).padStart(8, '0'), updated_epoch: Math.floor(Date.now()/1000), ok: i, total: i, errors: [], r };
 }
+
+
+/* ═════════════ 배번 직접 등록 창 ═════════════ */
+let REG = null;   // { race, crew, course, edit }
+const REG_ERR = {
+  bad_password: '비밀번호가 맞지 않아요', locked: '출발 시각이 지나 등록이 마감됐어요',
+  dup_admin: '관리자가 이미 등록한 배번이에요', bad_bib: '배번은 숫자·영문으로 12자까지 넣을 수 있어요',
+  too_many: '크루당 300명까지 등록할 수 있어요', config: '대회 설정을 읽지 못했어요. 잠시 후 다시 해주세요',
+  no_race: '대회 정보가 바뀌었어요. 새로고침 후 다시 해주세요', no_crew: '크루 정보가 바뀌었어요. 새로고침 후 다시 해주세요',
+  no_course: '종목 정보가 바뀌었어요. 새로고침 후 다시 해주세요'
+};
+async function regCall(fn, body){
+  try{ return await Board.req(`/rest/v1/rpc/${fn}`, { method: 'POST', json: body }) || {}; }
+  catch(e){ return { error: e && e.status === 404 ? 'not_installed' : 'network' }; }
+}
+function regMsg(code){
+  if(code === 'not_installed') return '배번 등록 기능이 아직 설치되지 않았어요 (관리자에게 알려주세요)';
+  if(code === 'network') return '연결이 불안정해요. 잠시 후 다시 해주세요';
+  return REG_ERR[code] || '등록하지 못했어요. 다시 해주세요';
+}
+function regFmtLock(race, course){
+  const d = new Date(regLockMs(race, course) + 9*3600000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+function regGroups(){
+  const c = findCourse(REG.race, $('regCourse').value) || REG.course;
+  const gs = (c.groups || []).filter(g => g && g.id);
+  const cur = $('regGroup').value;
+  $('regGroup').innerHTML = `<option value="">그룹 ${gs.length ? '선택 안 함' : '없음'}</option>` + gs.map(g => `<option value="${esc(g.id)}">${esc(groupLabel(g.id))}${g.start ? ' · ' + esc(g.start) : ''}</option>`).join('');
+  $('regGroup').hidden = !gs.length;
+  if(gs.some(g => g.id === cur)) $('regGroup').value = cur;
+  const open = nowMs() < regLockMs(REG.race, c);
+  $('regHint').innerHTML = open
+    ? `<b>${esc(c.name)}</b>은 <b>${regFmtLock(REG.race, c)} 출발 전까지</b> 등록·수정할 수 있어요. 이름을 비워두면 마이리저트 이름으로 자동 표시돼요.`
+    : `<b>${esc(c.name)}</b>은 출발 시각이 지나 등록이 마감됐어요.`;
+  $('regAdd').disabled = !open;
+}
+function regListHtml(){
+  const { race, crew } = REG;
+  const mine = SELF.rows.filter(x => x.race_id === race.id && x.crew_id === crew.id);
+  const adminN = crew.runners.length;
+  const cname = id => (findCourse(race, id) || {}).name || id;
+  let h = `<div class="reg-lh"><b>우리 크루가 등록한 배번 ${mine.length}명</b>${adminN ? `<span>관리자 등록 ${adminN}명은 관리자만 수정</span>` : ''}</div>`;
+  if(!mine.length) return h + `<div class="reg-empty">아직 없어요. 위에서 첫 배번을 등록해주세요.</div>`;
+  return h + mine.map(x => {
+    const c = findCourse(race, x.course_id), open = c && nowMs() < regLockMs(race, c);
+    return `<div class="reg-item"><span class="ri-main"><b>${esc(x.name || '(이름 자동)')}</b><span>#${esc(x.bib)} · ${esc(cname(x.course_id))}${x.grp ? ' · ' + esc(groupLabel(x.grp)) : ''}</span></span>
+      ${open ? `<button data-redit="${esc(x.bib)}">수정</button><button class="del" data-rdel="${esc(x.bib)}">삭제</button>` : '<em>마감</em>'}</div>`;
+  }).join('');
+}
+function regRender(){ if(REG) $('regList').innerHTML = regListHtml(); }
+function regResetForm(){
+  REG.edit = null; $('regBib').value = ''; $('regName').value = ''; $('regAdd').textContent = '등록하기';
+}
+function openReg(){
+  if(!CTX) return;
+  const { race, crew, course } = CTX;
+  if(!regOpenAny(race)){ toast('출발 시각이 지나 등록이 마감됐어요'); return; }
+  REG = { race, crew, course, edit: null };
+  $('regCrew').textContent = `${crew.name} 배번 등록`;
+  $('regLogo').innerHTML = clogo(crew, 40);
+  $('regCourse').innerHTML = race.courses.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  $('regCourse').value = course.id;
+  $('regCourse').hidden = race.courses.length < 2;
+  $('regGroup').value = '';
+  const pw = crew.pw ? recallPw(race, crew) : 'x';
+  $('regPwRow').hidden = !!pw; $('regPw').value = '';
+  $('regErr').textContent = '';
+  regResetForm(); regGroups(); regRender();
+  $('reg').hidden = false;
+  setTimeout(() => (pw ? $('regBib') : $('regPw')).focus(), 250);
+  loadSelf(true).then(regRender);
+}
+function closeReg(){ $('reg').hidden = true; REG = null; }
+async function regAfterChange(){
+  await loadSelf(true);
+  regRender();
+  if(CTX){
+    const nr = buildRoster(CTX.crew, CTX.course);
+    ROSTER = nr; await refresh(true);
+  }
+}
+function regPw(){
+  const { race, crew } = REG;
+  if(!crew.pw) return '';
+  return $('regPwRow').hidden ? recallPw(race, crew) : $('regPw').value;
+}
+function regFail(code){
+  $('regErr').textContent = regMsg(code);
+  if(code === 'bad_password'){ $('regPwRow').hidden = false; $('regPw').value = ''; $('regPw').focus(); }
+  $('regCard').classList.remove('shake'); void $('regCard').offsetWidth; $('regCard').classList.add('shake');
+}
+$('regAdd').addEventListener('click', async () => {
+  if(!REG || $('regAdd').disabled) return;
+  const { race, crew } = REG;
+  const bib = $('regBib').value.trim().toUpperCase(), name = $('regName').value.trim();
+  const courseId = $('regCourse').value || REG.course.id, grp = $('regGroup').hidden ? '' : $('regGroup').value;
+  $('regErr').textContent = '';
+  if(!/^[0-9A-Z-]{1,12}$/.test(bib)){ regFail('bad_bib'); $('regBib').focus(); return; }
+  if(crew.runners.some(p => String(p.b).toUpperCase() === bib)){ regFail('dup_admin'); return; }
+  const pw = regPw();
+  if(crew.pw && !pw){ $('regPwRow').hidden = false; $('regErr').textContent = '크루 비밀번호를 입력해주세요'; $('regPw').focus(); return; }
+  $('regAdd').disabled = true; const label = $('regAdd').textContent; $('regAdd').textContent = '저장 중…';
+  const r = await regCall('odj_bib_save', { p_race: race.id, p_crew: crew.id, p_pw: pw, p_bib: bib, p_name: name, p_course: courseId, p_grp: grp });
+  if(r && r.ok && REG && REG.edit && REG.edit !== bib) await regCall('odj_bib_delete', { p_race: race.id, p_crew: crew.id, p_pw: pw, p_bib: REG.edit });
+  $('regAdd').disabled = false; $('regAdd').textContent = label;
+  if(!REG) return;
+  if(!r || !r.ok){ regFail(r && r.error); return; }
+  if(crew.pw){ rememberPw(race, crew, pw); $('regPwRow').hidden = true; }
+  toast(REG.edit ? `#${bib} 수정했어요` : `#${bib} 등록했어요 · 트래커에 바로 나와요`);
+  regResetForm(); $('regBib').focus();
+  await regAfterChange();
+});
+$('regList').addEventListener('click', async e => {
+  if(!REG) return;
+  const ed = e.target.closest('[data-redit]'), del = e.target.closest('[data-rdel]');
+  if(ed){
+    const x = SELF.rows.find(r => r.race_id === REG.race.id && r.crew_id === REG.crew.id && r.bib === ed.dataset.redit); if(!x) return;
+    REG.edit = x.bib; $('regBib').value = x.bib; $('regName').value = x.name || '';
+    $('regCourse').value = x.course_id; regGroups(); $('regGroup').value = x.grp || '';
+    $('regAdd').textContent = '수정 저장'; $('regErr').textContent = ''; $('regName').focus();
+    return;
+  }
+  if(del){
+    const bib = del.dataset.rdel;
+    if(!confirm(`#${bib} 배번을 삭제할까요?`)) return;
+    const pw = regPw();
+    if(REG.crew.pw && !pw){ $('regPwRow').hidden = false; $('regErr').textContent = '크루 비밀번호를 입력해주세요'; $('regPw').focus(); return; }
+    const r = await regCall('odj_bib_delete', { p_race: REG.race.id, p_crew: REG.crew.id, p_pw: pw, p_bib: bib });
+    if(!r || !r.ok){ regFail(r && r.error); return; }
+    if(REG.crew.pw) rememberPw(REG.race, REG.crew, pw);
+    if(REG.edit === bib) regResetForm();
+    toast(`#${bib} 삭제했어요`);
+    await regAfterChange();
+  }
+});
+$('regCourse').addEventListener('change', regGroups);
+$('regDone').addEventListener('click', closeReg);
+$('reg').addEventListener('click', e => { if(e.target === $('reg')) closeReg(); });
+$('regBtn').addEventListener('click', openReg);
+$('list').addEventListener('click', e => { if(e.target.closest('[data-reg]')) openReg(); });
+['regBib', 'regName', 'regPw'].forEach(id => $(id).addEventListener('keydown', e => {
+  if(e.key !== 'Enter' || e.isComposing) return;
+  if(id === 'regBib') $('regName').focus(); else $('regAdd').click();
+}));
 
 /* ═════════════ 시작 ═════════════ */
 (async function boot(){
