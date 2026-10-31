@@ -21,16 +21,21 @@ on:
         description: '갱신 간격(초)'
         default: '60'
   schedule:
-    # 매일 05:40 KST (= 20:40 UTC) 자동 시작 — 오늘 대회가 없으면 바로 끝남
-    - cron: '40 20 * * *'
+    # 매일 아침 자동 시작 (오늘 대회가 없으면 바로 끝남)
+    # GitHub 예약 실행은 가끔 늦거나 빠지기도 해서 3번 걸어둠 · 이미 돌고 있으면 뒤에 온 건 기다렸다가 할 일이 없으면 바로 끝남
+    - cron: '10 20 * * *'   # 05:10 KST
+    - cron: '40 20 * * *'   # 05:40 KST
+    - cron: '20 21 * * *'   # 06:20 KST
 
 permissions:
   contents: write
   actions: write
 
+# 실전 수집은 한 번에 하나만 · 새로 켜도 돌고 있는 수집기를 끊지 않음
+# '1회 테스트'는 따로 돌아서, 대회 중에 눌러도 실전 수집이 멈추지 않음
 concurrency:
-  group: crewlive-collector
-  cancel-in-progress: true
+  group: crewlive-collector-${{ github.event.inputs.mode == '1회 테스트' && 'test' || 'live' }}
+  cancel-in-progress: false
 
 jobs:
   collect:
