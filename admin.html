@@ -790,6 +790,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:11px 16px;border-radius:999px;font-size:13px;font-weight:700;opacity:0;transition:.25s;z-index:100;pointer-events:none;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translate(-50%,0)}
   .muted{color:var(--ink3)}
+  .selflist{background:var(--bg,#F5F5F7);border-radius:12px;padding:8px 12px;margin:4px 0 6px;font-size:13.5px;line-height:1.9;max-height:260px;overflow:auto}
   .empty{text-align:center;padding:26px 10px;color:var(--ink3);font-weight:700;font-size:13px;line-height:1.7}
   .badge-n{font-size:11px;font-weight:800;background:var(--bg);border-radius:999px;padding:3px 8px;color:var(--ink2);white-space:nowrap}
   .sep{height:1px;background:var(--line);margin:14px 0}
@@ -1147,7 +1148,7 @@ function renderPanel(){
   destroyMaps();
   const P = $('panel');
   if(UI.tab === 'course') P.innerHTML = courseTab(r);
-  else if(UI.tab === 'crew'){ P.innerHTML = crewTab(r); loadLiveNames(r.id); }
+  else if(UI.tab === 'crew'){ P.innerHTML = crewTab(r); loadLiveNames(r.id); loadSelfAdmin(); }
   else if(UI.tab === 'ops'){ P.innerHTML = opsTab(r); loadOps(); opsTimer = setInterval(() => { if(!document.hidden) loadOps(); }, 20000); }
   else P.innerHTML = infoTab(r);
   afterRender();
@@ -1199,7 +1200,7 @@ function checks(r){
   if(!r.crews.length) add('err', '크루가 하나도 없어요');
   r.crews.forEach(c => {
     if(!c.pw) add('warn', `[${c.name}] 비밀번호가 없어서 누구나 열 수 있어요`);
-    if(!c.runners.length) add('warn', `[${c.name}] 크루원이 없어요`);
+    if(!c.runners.length && !selfOn()) add('warn', `[${c.name}] 크루원이 없어요`);
     c.runners.forEach(p => {
       if(!String(p.b || '').trim()) add('err', `[${c.name}] 배번이 비어 있는 줄이 있어요`);
       const co = r.courses.find(x => x.id === p.c);
@@ -1410,14 +1411,35 @@ function runnerRow(r, c, p, i, idx){
     ${dup ? '<div class="r-warn">⚠ 다른 곳에도 등록된 배번</div>' : ''}
   </div>`;
 }
+/* 크루원이 앱에서 직접 등록한 배번 (Supabase) — 관리자 화면에서는 보기만 */
+const ADM_SELF = { rows: [], at: 0, ok: false };
+function selfOn(){ return FEATURE_BOARD && !!CFG.settings.selfReg; }
+async function loadSelfAdmin(force){
+  if(!selfOn() || (!force && Date.now() - ADM_SELF.at < 30000)) return;
+  ADM_SELF.at = Date.now();
+  const b = CFG.settings.board || {}; let base = '';
+  try{ const u = new URL(String(b.url || '').trim()); if(u.protocol === 'https:') base = u.origin; }catch(_){}
+  const key = String(b.key || '').trim(); if(!base || !key) return;
+  try{
+    const h = { apikey: key }; if(key.startsWith('eyJ')) h.Authorization = `Bearer ${key}`;
+    const res = await fetch(`${base}/rest/v1/odj_bibs?select=race_id,crew_id,bib,name,course_id,grp,created_at&order=id&limit=5000`, { headers: h, cache: 'no-store' });
+    if(!res.ok) return;
+    const rows = await res.json(); const sig = JSON.stringify(rows);
+    if(sig === JSON.stringify(ADM_SELF.rows) && ADM_SELF.ok) return;
+    ADM_SELF.rows = Array.isArray(rows) ? rows : []; ADM_SELF.ok = true;
+    if(UI.tab === 'crew' && !(document.activeElement && document.activeElement.closest('.rrow, textarea, input'))) renderPanel();
+  }catch(_){}
+}
+function selfOf(r, c){ return ADM_SELF.rows.filter(x => x.race_id === r.id && x.crew_id === c.id); }
 function crewItem(r, c){
   const open = !!UI.open[`k:${c.id}`];
+  const mine = selfOf(r, c);
   const per = r.courses.map(co => `${co.name} ${c.runners.filter(p => p.c === co.id).length}`).join(' · ');
   const idx = bibIndex(r);
   const base = siteUrl();
   return `<div class="item${open ? ' open' : ''}">
     <div class="item-head" data-toggle="k:${esc(c.id)}">${crewLogoHtml(c, 36)}
-      <span class="tt"><b>${esc(c.name || '이름 없음')}</b><span>${c.runners.length}명${per && r.courses.length > 1 ? ` (${esc(per)})` : ''} · ${c.pw ? '🔒 비밀번호 있음' : '<span style="color:var(--errc)">🔓 비밀번호 없음</span>'}</span></span>
+      <span class="tt"><b>${esc(c.name || '이름 없음')}</b><span>${c.runners.length}명${per && r.courses.length > 1 ? ` (${esc(per)})` : ''}${selfOn() ? ` · 📱직접 등록 ${mine.length}명` : ''} · ${c.pw ? '🔒 비밀번호 있음' : '<span style="color:var(--errc)">🔓 비밀번호 없음</span>'}</span></span>
       <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></div>
     ${open ? `<div class="item-body">
       <div class="grid2">
@@ -1431,9 +1453,12 @@ function crewItem(r, c){
         <div class="help">정사각형 로고가 가장 예뻐요. 올리면 작게(160px) 줄여서 저장해요. 로고가 없으면 크루 색 + 첫 글자로 보여요.</div></div>
       <div class="field"><label>크루 색 (로고가 없을 때, 지도·목록 표시)</label><div class="colors">${COLORS.map(col => `<button style="background:${col}" class="${(c.color || '').toUpperCase() === col ? 'on' : ''}" data-color="${esc(c.id)}|${col}" aria-label="${col}"></button>`).join('')}<input type="color" data-o="crew:${esc(c.id)}" data-f="color" data-rr value="${esc(c.color || '#F2540A')}" /></div></div>
       ${base && r.courses.length ? `<div class="field"><label>크루원에게 보낼 링크 (비밀번호도 함께 알려주세요)</label>
-        ${r.courses.filter(co => c.runners.some(p => p.c === co.id)).map(co => { const u = `${base}#/race/${encodeURIComponent(r.id)}/${encodeURIComponent(co.id)}/${encodeURIComponent(c.id)}`; return `<div class="link"><code>${esc(co.name)} · ${esc(u)}</code><button class="btn sm ghost" data-copy="${esc(u)}">복사</button></div>`; }).join('') || '<div class="help">배번을 넣으면 종목별 링크가 생겨요</div>'}</div>` : ''}
+        ${r.courses.filter(co => selfOn() || c.runners.some(p => p.c === co.id)).map(co => { const u = `${base}#/race/${encodeURIComponent(r.id)}/${encodeURIComponent(co.id)}/${encodeURIComponent(c.id)}`; return `<div class="link"><code>${esc(co.name)} · ${esc(u)}</code><button class="btn sm ghost" data-copy="${esc(u)}">복사</button></div>`; }).join('') || '<div class="help">배번을 넣으면 종목별 링크가 생겨요</div>'}</div>` : ''}
 
-      <h3>🏃 배번 <span class="muted" style="font-weight:600">${c.runners.length}명${r.courses.length > 1 ? ' · ' + esc(per) : ''}</span></h3>
+      ${selfOn() ? `<h3>📱 크루원이 직접 등록한 배번 <span class="muted" style="font-weight:600">${mine.length}명</span></h3>
+      ${mine.length ? `<div class="selflist">${mine.map(x => `<div><b>#${esc(x.bib)}</b> ${esc(x.name || '(이름 자동)')} <span class="muted">· ${esc((r.courses.find(co => co.id === x.course_id) || {}).name || x.course_id)}${x.grp ? ' · ' + esc(x.grp) + '조' : ''}</span></div>`).join('')}</div>` : '<div class="help">아직 없어요. 크루원이 앱에서 크루 비밀번호로 등록하면 여기에 보여요.</div>'}
+      <div class="help" style="margin-bottom:12px">여기서는 보기만 할 수 있어요. 지우려면 크루원 앱의 <b>＋ 배번</b> 창, 또는 Supabase → Table Editor → <code>odj_bibs</code>. <button class="btn sm ghost" data-selfreload="1">↻ 새로고침</button></div>` : ''}
+      <h3>🏃 ${selfOn() ? '관리자가 넣은 ' : ''}배번 <span class="muted" style="font-weight:600">${c.runners.length}명${r.courses.length > 1 ? ' · ' + esc(per) : ''}</span></h3>
       <div class="help" style="margin-bottom:8px">종목을 고르고 배번만 넣으면 돼요. 풀코스·10km 트래커로 <b>자동으로 나뉘어요</b>. 이름은 비워두면 마이리저트에서 가져와요.</div>
       <div class="rlist">${c.runners.map((p, i) => runnerRow(r, c, p, i, idx)).join('')}</div>
       <button class="btn primary addbib" data-addrunner="${esc(c.id)}">＋ 배번 추가</button>
@@ -1665,10 +1690,12 @@ $('panel').addEventListener('click', async e => {
     const c = r.crews.find(x => x.id === d.setpw), v = $(`pw_${c.id}`).value.trim();
     if(!v){ if(c.pw && confirm('비밀번호를 없앨까요? (누구나 이 크루를 볼 수 있어요)')){ c.pw = ''; markDirty(); renderPanel(); } else toast('새 비밀번호를 입력하세요'); return; }
     if(v.length < 4 && !confirm('4자리보다 짧은 비밀번호예요. 그래도 쓸까요?')) return;
-    c.salt = rnd(8); c.pw = await sha256Hex(`${c.salt}:${v}`);
-    markDirty(); renderPanel(); toast(`비밀번호를 "${v}" 로 정했어요. 저장 후 크루원에게 알려주세요`); return;
+    const norm = String(v).normalize('NFC').toLowerCase().replace(/\s+/g, '');   // 대소문자·띄어쓰기 상관없이 열리게
+    c.salt = rnd(8); c.pw = await sha256Hex(`${c.salt}:${norm}`); c.pwv = 2;
+    markDirty(); renderPanel(); toast(`비밀번호를 "${v}" 로 정했어요 (대소문자·띄어쓰기 상관없이 열려요). 저장 후 크루원에게 알려주세요`); return;
   }
   if(d.addrunner){ addRunner(r, d.addrunner); return; }
+  if(d.selfreload){ await loadSelfAdmin(true); renderPanel(); toast('직접 등록 명단을 새로 불러왔어요'); return; }
   if(d.dellogo){ const c = r.crews.find(x => x.id === d.dellogo); delete c.logo; markDirty(); renderPanel(); return; }
   if(d.delrunner){ const [id, i] = d.delrunner.split(':'); r.crews.find(x => x.id === id).runners.splice(+i, 1); markDirty(); renderPanel(); return; }
   if(d.paste){

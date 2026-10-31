@@ -74,6 +74,26 @@ def is_valid_time(value):
     return any(int(g) for g in m.groups() if g)
 
 
+# 대회 당일에는 '지금보다 미래'로 찍힌 통과 기록은 무시해요.
+# (마이리저트가 대회 전에 넣어두는 시험용 가짜 기록 때문에 출발 전부터 '완주'로 보이는 걸 막음)
+_CUT = {"sec": None}
+
+
+def clock_sec(value):
+    m = re.match(r"^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?", str(value or ""))
+    if not m:
+        return None
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3) or 0)
+
+
+def too_late(t):
+    c = _CUT["sec"]
+    if c is None:
+        return False
+    v = clock_sec(t)
+    return v is not None and v > c
+
+
 def parse_hhmm(s, default=None):
     m = re.match(r"^\s*(\d{1,2}):(\d{2})", str(s or ""))
     if not m:
@@ -262,6 +282,8 @@ def parse_html(text, course_km, turn_km):
         labels_found += 1
         if not is_valid_time(nxt[0]):
             continue  # '?' → 아직 통과 전
+        if too_late(nxt[0]):
+            continue  # 지금보다 미래 시각 → 시험용 가짜 기록
         if km == 0.0:
             start_time = nxt[0]
         net = nxt[2] if len(nxt) >= 3 and is_valid_time(nxt[2]) else None
@@ -279,6 +301,8 @@ def parse_json(data, course_km, turn_km):
     def consider(label, t, net=None):
         km = label_to_km(label, course_km, turn_km)
         if km is None or not is_valid_time(t):
+            return
+        if too_late(t):
             return
         t = str(t).strip()
         net = str(net).strip() if is_valid_time(net) else None
@@ -432,10 +456,30 @@ def load_prev(path):
         return {}
 
 
+def first_start_epoch(race):
+    starts = []
+    for c in race.get("courses", []) or []:
+        for t in [c.get("start")] + [g.get("start") for g in (c.get("groups") or []) if isinstance(g, dict)]:
+            hm = parse_hhmm(t)
+            if hm:
+                starts.append(hm)
+    try:
+        return race_epoch(race, min(starts) if starts else (9, 0))
+    except Exception:
+        return 0
+
+
 def collect_race(race, now, cfg=None):
     rid = race["id"]
     event_id = str(race["myresultId"]).strip()
     bibs = race_bibs(race, self_bibs(cfg, rid))
+    # 대회 당일만 '미래 시각 기록' 무시 · 첫 출발 10분 전까지는 통과 기록을 아예 안 받음 (이름만)
+    race_day = race.get("date") == datetime.fromtimestamp(now, KST).strftime("%Y-%m-%d")
+    first_start = first_start_epoch(race)
+    before_start = now < first_start - 600
+    _CUT["sec"] = (clock_sec(datetime.fromtimestamp(now, KST).strftime("%H:%M:%S")) + 90) if race_day else None
+    if before_start:
+        print(f"[{rid}] 첫 출발 전이라 통과 기록은 받지 않고 이름만 확인해요")
     path = os.path.join(OUT_DIR, f"{rid}.json")
     prev = load_prev(path)
     prev_r = prev.get("r") if isinstance(prev.get("r"), dict) else {}
@@ -485,6 +529,26 @@ def collect_race(race, now, cfg=None):
             "nm": old.get("nm"), "ck": old.get("ck"),
         }
         res = results.get(bib, {})
+        if before_start and not old.get("ov"):
+            # 출발 전: 남아 있는 시험용/지난 기록은 비우고 이름만 유지
+            rec.update(km=0.0, st=0, pt=None, ps=None, nt=None, s0=None, sp=[], e=int(now))
+            if res.get("ok") and not res.get("skipped"):
+                ok_count += 1
+                if res.get("name"):
+                    rec["nm"] = res["name"]
+            elif not res.get("ok"):
+                errors.append(bib)
+            out[bib] = {k: v for k, v in rec.items() if v not in (None, [], "")} | {"km": rec["km"]}
+            continue
+        if res.get("ok") and not res.get("skipped") and not old.get("ov"):
+            best0 = res.get("best")
+            stale = race_day and rec.get("ps") and too_late(rec["ps"])
+            changed = bool(best0 and best0.get("start_time") and rec.get("s0") and best0["start_time"] != rec["s0"])
+            if stale or changed:
+                # 마이리저트 기록이 통째로 바뀜(시험 기록 → 실제 기록) → 처음부터 다시
+                print(f"[INFO] {rid}/{bib} 기록이 새로 바뀌어 다시 받아요 ({'미래 시각' if stale else '출발 시각 변경'})")
+                rec.update(km=0.0, st=0, pt=None, ps=None, nt=None, s0=None, sp=[], e=int(now))
+                old_km = 0.0
         if res.get("ok") and res.get("skipped"):
             ok_count += 1
         elif res.get("ok"):

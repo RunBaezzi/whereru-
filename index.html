@@ -1367,7 +1367,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div class="pw-card" id="pwCard">
     <div class="pw-crew"><span id="pwLogo"></span><span id="pwCrew">크루</span></div>
     <p id="pwHint">크루 비밀번호를 입력하면 실시간 트래커가 열려요</p>
-    <input type="password" id="pwInput" autocomplete="off" enterkeyhint="go" placeholder="비밀번호" />
+    <input type="password" id="pwInput" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="비밀번호" />
     <div class="pw-err" id="pwErr"></div>
     <div class="pw-btns">
       <button class="pw-cancel" id="pwCancel">취소</button>
@@ -1380,7 +1380,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
   <div class="pw-card reg-card" id="regCard">
     <div class="pw-crew"><span id="regLogo"></span><span id="regCrew">크루</span></div>
     <p id="regHint">배번을 등록하면 실시간 트래커에 바로 나와요</p>
-    <div class="reg-pw" id="regPwRow" hidden><input type="password" id="regPw" placeholder="크루 비밀번호" autocomplete="off" /></div>
+    <div class="reg-pw" id="regPwRow" hidden><input type="password" id="regPw" placeholder="크루 비밀번호" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" /></div>
     <div class="reg-form">
       <input id="regBib" inputmode="numeric" placeholder="배번" maxlength="12" autocomplete="off" enterkeyhint="next" />
       <input id="regName" placeholder="이름 (선택)" maxlength="20" autocomplete="off" enterkeyhint="done" />
@@ -1571,6 +1571,7 @@ function fmtElapsed(sec){
 function fmtUntil(ms){
   const m = Math.ceil(ms/60000); if(m <= 0) return '곧 출발';
   const h = Math.floor(m/60);
+  if(h >= 24) return `출발까지 ${Math.floor(h/24)}일 ${h%24}시간`;
   return h ? `출발까지 ${h}시간 ${m%60}분` : `출발까지 ${m}분`;
 }
 function fmtKoDur(sec){
@@ -1746,9 +1747,18 @@ function isUnlocked(race, crew){
   const u = store.get('cl_unlock', {});
   return u[unlockKey(race, crew)] === crew.pw;
 }
-async function tryUnlock(race, crew, pw){
-  const h = await sha256Hex(`${crew.salt || ''}:${pw}`);
-  if(h !== crew.pw) return false;
+/* 대소문자·띄어쓰기·앞뒤 공백 실수는 봐줌: 관리자가 정한 방식(그대로 / 소문자·띄어쓰기 없이) 둘 다 맞춰봄 */
+function pwNorm(s){ return String(s || '').normalize('NFC').toLowerCase().replace(/\s+/g, ''); }
+async function matchPw(crew, v){
+  if(!crew.pw) return '';
+  for(const c of [...new Set([String(v || ''), String(v || '').trim(), pwNorm(v)])]){
+    if(c && await sha256Hex(`${crew.salt || ''}:${c}`) === crew.pw) return c;
+  }
+  return null;
+}
+async function tryUnlock(race, crew, v){
+  const pw = await matchPw(crew, v);
+  if(pw == null) return false;
   const u = store.get('cl_unlock', {}); u[unlockKey(race, crew)] = crew.pw; store.set('cl_unlock', u);
   rememberPw(race, crew, pw);
   return true;
@@ -2749,7 +2759,7 @@ function renderCourses(rid){
   V(`${BACK('#/')}<div class="h-title">${esc(race.name)}</div><div class="h-sub">${esc(race.date)}${race.place ? ' · ' + esc(race.place) : ''} · 종목을 선택하세요</div>` +
     race.courses.map(c => {
       const n = race.crews.reduce((s, cr) => s + crewMembers(cr, c).length, 0);
-      const crews = race.crews.filter(cr => crewMembers(cr, c).length).length;
+      const crews = regOpen(race, c) ? race.crews.length : race.crews.filter(cr => crewMembers(cr, c).length).length;
       return `<button class="card" data-go="#/race/${encodeURIComponent(rid)}/${encodeURIComponent(c.id)}"><div class="cc">
         <div class="cc-km"><b>${kmLabel(c.km)}</b><span>KM</span></div>
         <div class="cc-main"><b>${esc(c.name)}</b><span>${hmStr(hmOf(c.start) || [9,0])} 출발 · 크루 ${crews} · ${n}명</span></div>
@@ -3475,10 +3485,13 @@ async function regAfterChange(){
     ROSTER = nr; await refresh(true);
   }
 }
-function regPw(){
+async function regPw(){
   const { race, crew } = REG;
   if(!crew.pw) return '';
-  return $('regPwRow').hidden ? recallPw(race, crew) : $('regPw').value;
+  if($('regPwRow').hidden) return recallPw(race, crew);
+  const v = $('regPw').value; if(!v) return '';
+  const m = await matchPw(crew, v);
+  return m == null ? v : m;   // 안 맞으면 그대로 보내서 서버가 '비밀번호가 맞지 않아요' 로 답함
 }
 function regFail(code){
   $('regErr').textContent = regMsg(code);
@@ -3493,7 +3506,7 @@ $('regAdd').addEventListener('click', async () => {
   $('regErr').textContent = '';
   if(!/^[0-9A-Z-]{1,12}$/.test(bib)){ regFail('bad_bib'); $('regBib').focus(); return; }
   if(crew.runners.some(p => String(p.b).toUpperCase() === bib)){ regFail('dup_admin'); return; }
-  const pw = regPw();
+  const pw = await regPw();
   if(crew.pw && !pw){ $('regPwRow').hidden = false; $('regErr').textContent = '크루 비밀번호를 입력해주세요'; $('regPw').focus(); return; }
   $('regAdd').disabled = true; const label = $('regAdd').textContent; $('regAdd').textContent = '저장 중…';
   const r = await regCall('odj_bib_save', { p_race: race.id, p_crew: crew.id, p_pw: pw, p_bib: bib, p_name: name, p_course: courseId, p_grp: grp });
@@ -3519,7 +3532,7 @@ $('regList').addEventListener('click', async e => {
   if(del){
     const bib = del.dataset.rdel;
     if(!confirm(`#${bib} 배번을 삭제할까요?`)) return;
-    const pw = regPw();
+    const pw = await regPw();
     if(REG.crew.pw && !pw){ $('regPwRow').hidden = false; $('regErr').textContent = '크루 비밀번호를 입력해주세요'; $('regPw').focus(); return; }
     const r = await regCall('odj_bib_delete', { p_race: REG.race.id, p_crew: REG.crew.id, p_pw: pw, p_bib: bib });
     if(!r || !r.ok){ regFail(r && r.error); return; }
