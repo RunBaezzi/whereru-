@@ -1332,6 +1332,31 @@ svg.leaflet-image-layer.leaflet-interactive path {
   .reg-done{width:100%;height:48px;border-radius:999px;font-size:15px;margin-top:14px}
   @media (max-width:360px){ .reg-form{grid-template-columns:1fr} }
 
+/* ── 내 위치 · 응원 위치 안내 ── */
+.me-dot{position:absolute;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 0 rgba(26,115,232,.5),0 2px 8px rgba(0,0,0,.35);animation:mePulse 2s infinite}
+@keyframes mePulse{0%{box-shadow:0 0 0 0 rgba(26,115,232,.45),0 2px 8px rgba(0,0,0,.35)}70%{box-shadow:0 0 0 14px rgba(26,115,232,0),0 2px 8px rgba(0,0,0,.35)}100%{box-shadow:0 0 0 0 rgba(26,115,232,0),0 2px 8px rgba(0,0,0,.35)}}
+.loc-card{position:fixed;left:12px;right:66px;top:calc(var(--top) + 64px);z-index:1001;max-width:380px;background:var(--bg);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:10px 10px 8px;color:var(--ink)}
+.loc-card[hidden]{display:none}
+.follow-pill.show ~ .loc-card{top:calc(var(--top) + 106px)}
+.loc-head{display:flex;align-items:flex-start;gap:9px}
+.loc-dot{flex:none;width:12px;height:12px;margin-top:4px;border-radius:50%;background:#1A73E8;border:2px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.3)}
+.loc-main{flex:1;min-width:0}
+.loc-title{font-size:13.5px;font-weight:700;line-height:1.4;word-break:keep-all}
+.loc-title b{color:#1A73E8}
+.loc-sub{font-size:11px;color:#8a8a8e;margin-top:1px}
+.loc-x{flex:none;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.06);font-size:12px;color:inherit}
+.loc-list{margin-top:6px;display:flex;flex-direction:column;gap:2px;max-height:34vh;overflow:auto}
+.loc-list:empty{display:none}
+.loc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:5px 8px;border-radius:10px;background:transparent;color:inherit;font-size:13px}
+.loc-row:active{background:rgba(0,0,0,.05)}
+.loc-row.hot{background:rgba(26,115,232,.1)}
+.loc-row.hot .loc-eta{color:#1A73E8;font-weight:800;opacity:1}
+.loc-row.dim{opacity:.55}
+.loc-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.loc-eta{flex:none;font-size:12px;font-weight:600;opacity:.7}
+.loc-more{font-size:11.5px;font-weight:700;color:#1A73E8;padding:5px 8px 1px;background:none;text-align:left}
+@media (min-width: 900px){ .loc-card{left:auto;right:76px;width:360px} }
+
 </style>
 </head>
 <body>
@@ -1416,6 +1441,9 @@ svg.leaflet-image-layer.leaflet-interactive path {
     <button class="round-btn" id="darkBtn" aria-label="지도 어둡게 보기" title="지도 밝게/어둡게">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
+    <button class="round-btn" id="locBtn" aria-label="내 위치 보기" title="내 위치">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+    </button>
     <button class="round-btn" id="fitBtn" aria-label="전체 코스 보기">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
     </button>
@@ -1425,6 +1453,15 @@ svg.leaflet-image-layer.leaflet-interactive path {
 <div class="follow-pill" id="followPill">
   <span class="dot"></span><span id="followPillText">추적 중</span>
   <button id="followPillOff">해제</button>
+</div>
+
+<div class="loc-card" id="locCard" hidden>
+  <div class="loc-head">
+    <span class="loc-dot"></span>
+    <div class="loc-main"><div class="loc-title" id="locTitle">내 위치를 찾는 중…</div><div class="loc-sub" id="locSub"></div></div>
+    <button class="loc-x" id="locClose" aria-label="내 위치 끄기">✕</button>
+  </div>
+  <div class="loc-list" id="locList"></div>
 </div>
 
 <section class="sheet" id="sheet">
@@ -1973,7 +2010,8 @@ function drawCourse(){
 function uiInsets(){
   if(isDesktop()) return { left: 432, top: 70, bottom: 0 };
   const vis = typeof curY === 'number' && sheet.style.transform ? Math.max(0, sheetH() - curY) : Math.max(0, window.innerHeight - sheet.getBoundingClientRect().top);
-  return { left: 0, top: 70, bottom: vis };
+  const lc = document.getElementById('locCard'), lh = lc && !lc.hidden ? lc.getBoundingClientRect().bottom - 60 : 0;
+  return { left: 0, top: 70 + Math.max(0, lh), bottom: vis };
 }
 function focusOn(latlng, zoom, animate = true){
   if(!latlng) return;
@@ -2234,6 +2272,119 @@ $('fFollow').addEventListener('click', () => following ? stopFollow() : resumeFo
 $('fClose').addEventListener('click', clearSelection);
 $('followPillOff').addEventListener('click', () => stopFollow());
 $('fitBtn').addEventListener('click', () => { if(following) stopFollow('전체 코스 보기로 전환했어요'); fitCourse(); });
+
+/* ═════════════ 내 위치 · 응원 위치 안내 ═════════════
+   위치 정보는 이 휴대폰 안에서만 계산에 쓰고, 어디에도 보내거나 저장하지 않아요. */
+const Loc = (() => {
+  const layer = L.layerGroup().addTo(map);
+  let watchId = null, me = null, acc = 0, centered = false, lastDraw = 0, expanded = false;
+  const IN_APP = /Instagram|FBAN|FBAV|KAKAOTALK|NAVER\(|; ?wv\)|Line\//i.test(navigator.userAgent);
+  const card = () => $('locCard');
+  function nearest(p){
+    if(!HAS_PATH) return [];
+    const r = Math.PI / 180, cx = Math.cos(p[0] * r) * 111320, cy = 111320;
+    const segs = [];
+    for(let i = 0; i < COURSE.length - 1; i++){
+      const ax = (COURSE[i][1] - p[1]) * cx, ay = (COURSE[i][0] - p[0]) * cy;
+      const bx = (COURSE[i+1][1] - p[1]) * cx, by = (COURSE[i+1][0] - p[0]) * cy;
+      const dx = bx - ax, dy = by - ay, l2 = dx*dx + dy*dy;
+      const t = l2 ? Math.max(0, Math.min(1, -(ax*dx + ay*dy) / l2)) : 0;
+      segs.push({ d: Math.hypot(ax + t*dx, ay + t*dy), km: CUM_KM[i] + t * (CUM_KM[i+1] - CUM_KM[i]) });
+    }
+    segs.sort((a, b) => a.d - b.d);
+    const best = segs[0], tol = Math.max(60, best.d * 0.3), picks = [];
+    for(const s of segs){
+      if(s.d > best.d + tol) break;
+      if(picks.every(q => Math.abs(q.km - s.km) >= 1)) picks.push(s);
+    }
+    return picks.sort((a, b) => a.km - b.km);
+  }
+  function kmLabel(k){ return k < 0.05 ? '출발' : k > FULL - 0.05 ? '도착' : `${k.toFixed(1)}K`; }
+  function distText(m){ return m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`; }
+  function clockText(sec){ const h = Math.floor(sec / 3600) % 24, m = Math.floor(sec % 3600 / 60); return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+  // 한 선수가 targets(코스 위 km 목록) 중 아직 안 지난 첫 지점을 언제 지날지
+  function passInfo(r, targets){
+    const st = status(r), km = Number(r.km) || 0;
+    if(st === 'dnf') return { o: 5, t: 'DNF' };
+    const left = targets.filter(k => km < k - 0.02);
+    if(st === 'finished' || !left.length) return { o: 4, t: '지나갔어요' };
+    if(st === 'standby') return { o: 3, t: '출발 전' };
+    const K = left[0], p = curPaceOf(r), pass = hms(r.pass_time);
+    const ek = estKm(r);
+    if(ek != null && ek >= K - 0.05) return { o: 0, m: 0, t: '곧 지나가요', hot: 1 };
+    if(!p || !pass || pass < 4*3600 || pass > 22*3600) return { o: 2, t: '첫 기록 후 예상' };
+    const eta = pass + (K - km) * p, mins = Math.round((eta - kstClockSec(nowMs())) / 60);
+    const at = left.length < targets.length || targets.length > 1 ? ` · ${kmLabel(K)}` : '';
+    if(mins <= 1) return { o: 0, m: 0, t: `곧 지나가요${at}`, hot: 1 };
+    const txt = mins < 60 ? `약 ${mins}분 뒤` : `약 ${Math.floor(mins/60)}시간 ${mins%60}분 뒤`;
+    return { o: 1, m: mins, t: `${txt} (${clockText(eta)})${at}`, hot: mins <= 5 };
+  }
+  function draw(){
+    layer.clearLayers();
+    if(!me) return;
+    L.circle(me, { radius: Math.min(acc, 1500), color: '#1A73E8', weight: 1, opacity: .4, fillColor: '#1A73E8', fillOpacity: .12, interactive: false }).addTo(layer);
+    const ps = nearest(me);
+    if(ps.length && ps[0].d > 25){
+      ps.forEach(q => { const ll = latLngAt(q.km); if(ll) L.polyline([me, ll], { color: '#1A73E8', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(layer); });
+    }
+    L.marker(me, { icon: tagIcon('<div class="me-dot"></div>'), interactive: false, zIndexOffset: 2000 }).addTo(layer);
+  }
+  function update(){
+    if(watchId == null || card().hidden) return;
+    if(!me){ $('locTitle').textContent = '내 위치를 찾는 중…'; $('locSub').textContent = '위치 권한을 허용해 주세요'; $('locList').innerHTML = ''; return; }
+    const ps = nearest(me);
+    $('locSub').textContent = acc > 150 ? `위치 정확도가 낮아요 (±${distText(acc)})` : '내 위치는 이 휴대폰 안에서만 쓰여요';
+    if(!ps.length){ $('locTitle').textContent = '코스 지도가 없어 거리를 계산할 수 없어요'; $('locList').innerHTML = ''; return; }
+    const d = ps[0].d, spots = ps.map(q => kmLabel(q.km)).join(' · ');
+    $('locTitle').innerHTML = d < 30 ? `코스 위에 있어요 · <b>${esc(spots)}</b> 지점`
+      : d > 2000 ? `코스에서 <b>${distText(d)}</b> 떨어져 있어요 · 가까운 지점 ${esc(spots)}`
+      : `코스까지 <b>${distText(d)}</b> · <b>${esc(spots)}</b> 지점`;
+    const targets = ps.map(q => q.km);
+    const rows = runners.map(r => ({ r, i: passInfo(r, targets) }))
+      .sort((a, b) => a.i.o - b.i.o || (a.i.m ?? 0) - (b.i.m ?? 0) || a.r.order - b.r.order);
+    const MAX = 3, shown = expanded ? rows : rows.slice(0, MAX);
+    $('locList').innerHTML = shown.map(({ r, i }) =>
+      `<button class="loc-row${i.hot ? ' hot' : ''}${i.o >= 3 ? ' dim' : ''}" data-bib="${esc(r.bib)}"><span class="loc-name">${esc(r.name)}</span><span class="loc-eta">${esc(i.t)}</span></button>`).join('')
+      + (rows.length > MAX ? `<button class="loc-more" id="locMore">${expanded ? '접기' : `크루원 ${rows.length - MAX}명 더 보기`}</button>` : '');
+  }
+  function onPos(pos){
+    me = [pos.coords.latitude, pos.coords.longitude]; acc = pos.coords.accuracy || 0;
+    $('locBtn').classList.add('on');
+    if(!centered){ centered = true; center(); }
+    const now = Date.now();
+    if(now - lastDraw > 1500){ lastDraw = now; draw(); update(); }
+  }
+  function onErr(e){
+    if(me) return;  // 한 번이라도 찾았으면 일시적인 오류는 무시
+    stop();
+    if(e && e.code === 1) toast(IN_APP ? '앱 안의 브라우저에선 위치를 못 써요 · 사파리·크롬으로 열어 주세요' : '위치 권한이 꺼져 있어요 · 브라우저 설정에서 허용해 주세요');
+    else toast('위치를 찾지 못했어요 · 잠시 후 다시 눌러 주세요');
+  }
+  function center(){
+    if(!me) return;
+    if(following) stopFollow('내 위치로 이동했어요');
+    userMoved = true;
+    focusOn(me, Math.max(map.getZoom(), 16));
+  }
+  function start(){
+    if(!navigator.geolocation || !window.isSecureContext){ toast('이 브라우저에선 위치 기능을 쓸 수 없어요'); return; }
+    centered = false; me = null; expanded = false; card().hidden = false; update();
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  }
+  function stop(){
+    if(watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+    watchId = null; me = null; layer.clearLayers();
+    card().hidden = true; $('locBtn').classList.remove('on');
+  }
+  $('locBtn').addEventListener('click', () => { if(watchId == null) start(); else if(me) center(); });
+  $('locClose').addEventListener('click', () => { stop(); toast('내 위치 표시를 껐어요'); });
+  $('locList').addEventListener('click', e => {
+    if(e.target.closest('#locMore')){ expanded = !expanded; update(); return; }
+    const b = e.target.closest('.loc-row'); if(b) selectRunner(b.dataset.bib);
+  });
+  return { update, stop, _nearest: nearest };
+})();
+
 $('fShare').addEventListener('click', async () => {
   const r = runners.find(x => String(x.bib) === selectedBib); if(!r || !CTX) return;
   const url = `${location.origin}${location.pathname}${DEMO ? '?demo' : ''}#/race/${encodeURIComponent(CTX.race.id)}/${encodeURIComponent(CTX.course.id)}/${encodeURIComponent(CTX.crew.id)}/${encodeURIComponent(r.bib)}`;
@@ -2588,7 +2739,7 @@ function renderClock(){
 }
 function render(){
   if(!CTX) return;
-  try{ renderStats(); renderFocus(); renderList(); renderSync(); renderClock(); drawMarkers(); }
+  try{ renderStats(); renderFocus(); renderList(); renderSync(); renderClock(); drawMarkers(); Loc.update(); }
   catch(err){ console.error('render', err); }
 }
 
@@ -2656,6 +2807,7 @@ function leaveTracker(){
   celebQueue = []; $('celeb').classList.remove('show'); celebBusy = false;
   groupTimers.forEach(clearTimeout); groupTimers = [];
   markerLayer.clearLayers();
+  Loc.stop();
   document.title = cfg ? cfg.settings.serviceName : 'ㅇㄷㅉ?';
 }
 $('backBtn').addEventListener('click', () => {
