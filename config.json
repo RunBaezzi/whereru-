@@ -5335,7 +5335,7 @@
      "id": "half",
      "name": "하프",
      "km": 21.0975,
-     "turnKm": 2.58,
+     "turnKm": null,
      "start": "07:30",
      "groups": [
       {
