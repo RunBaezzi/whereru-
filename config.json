@@ -4773,6 +4773,46 @@
     }
    ],
    "overrides": {}
+  },
+  {
+   "id": "r261110egm",
+   "name": "2026 가민런",
+   "date": "2026-11-15",
+   "place": "고양종합운동장",
+   "myresultId": "",
+   "hidden": false,
+   "notice": "",
+   "collect": {},
+   "courses": [
+    {
+     "id": "half",
+     "name": "하프",
+     "km": 21.0975,
+     "turnKm": null,
+     "start": "08:00",
+     "groups": [
+      {
+       "id": "A",
+       "start": "08:00"
+      },
+      {
+       "id": "B",
+       "start": "08:05"
+      },
+      {
+       "id": "C",
+       "start": "08:10"
+      },
+      {
+       "id": "D",
+       "start": "08:15"
+      }
+     ],
+     "path": []
+    }
+   ],
+   "crews": [],
+   "overrides": {}
   }
  ]
 }
